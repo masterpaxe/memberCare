@@ -1,0 +1,1012 @@
+openapi: 3.1.0
+info:
+  title: MemberCare API
+  version: 1.0.0
+  summary: Church Management and Member Care backend contracts
+  description: |
+    API contracts for Phase 1 modules based on the SRS.
+    Includes authentication, members, visitors, new converts, attendance,
+    follow-up and reporting endpoints.
+servers:
+  - url: https://api.membercare.local/v1
+    description: Production-like endpoint
+  - url: http://localhost:8080/v1
+    description: Local development
+
+tags:
+  - name: Auth
+  - name: Dashboard
+  - name: Members
+  - name: Visitors
+  - name: NewConverts
+  - name: Attendance
+  - name: FollowUp
+  - name: Reports
+  - name: Admin
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate user and issue tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [usernameOrEmail, password]
+              properties:
+                usernameOrEmail:
+                  type: string
+                password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        "200":
+          description: Refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+
+  /dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Dashboard KPI summary
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /members:
+    get:
+      tags: [Members]
+      summary: List members
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Active, Inactive, Transferred, Deceased]
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Member list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedMemberResponse"
+    post:
+      tags: [Members]
+      summary: Create member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+
+  /members/{memberId}:
+    get:
+      tags: [Members]
+      summary: Get member by id
+      parameters:
+        - $ref: "#/components/parameters/MemberId"
+      responses:
+        "200":
+          description: Member detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Members]
+      summary: Update member
+      parameters:
+        - $ref: "#/components/parameters/MemberId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+    delete:
+      tags: [Members]
+      summary: Soft-delete member record
+      parameters:
+        - $ref: "#/components/parameters/MemberId"
+      responses:
+        "204":
+          description: Deleted
+
+  /visitors:
+    get:
+      tags: [Visitors]
+      summary: List visitors and first-timers
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - name: followUpStatus
+          in: query
+          schema:
+            type: string
+            enum: [Pending, Contacted, Assimilated, Closed]
+      responses:
+        "200":
+          description: Visitor list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorListResponse"
+    post:
+      tags: [Visitors]
+      summary: Create visitor record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisitorCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Visitor"
+
+  /visitors/{visitorId}/convert:
+    post:
+      tags: [Visitors]
+      summary: Convert visitor to member
+      parameters:
+        - $ref: "#/components/parameters/VisitorId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [departmentId, fellowshipId]
+              properties:
+                departmentId:
+                  type: string
+                  format: uuid
+                fellowshipId:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Visitor converted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [visitorId, member]
+                properties:
+                  visitorId:
+                    type: string
+                    format: uuid
+                  member:
+                    $ref: "#/components/schemas/Member"
+
+  /new-converts:
+    get:
+      tags: [NewConverts]
+      summary: List new converts
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - name: baptismStatus
+          in: query
+          schema:
+            type: string
+            enum: [Pending, Completed]
+      responses:
+        "200":
+          description: New convert list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewConvertListResponse"
+    post:
+      tags: [NewConverts]
+      summary: Create new convert record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewConvertCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewConvert"
+
+  /attendance/sessions:
+    get:
+      tags: [Attendance]
+      summary: List attendance sessions
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: toDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Sessions list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceSessionListResponse"
+    post:
+      tags: [Attendance]
+      summary: Create attendance session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttendanceSessionCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceSession"
+
+  /attendance/records:
+    post:
+      tags: [Attendance]
+      summary: Add attendance record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttendanceRecordCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceRecord"
+
+  /follow-up/records:
+    get:
+      tags: [FollowUp]
+      summary: List follow-up records
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Open, In Progress, Closed]
+      responses:
+        "200":
+          description: Follow-up list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowUpListResponse"
+    post:
+      tags: [FollowUp]
+      summary: Create follow-up record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FollowUpCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowUpRecord"
+
+  /reports/summary:
+    get:
+      tags: [Reports]
+      summary: Leadership summary report
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: toDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Summary report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSummary"
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List users
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    MemberId:
+      name: memberId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    VisitorId:
+      name: visitorId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    BranchId:
+      name: branchId
+      in: query
+      required: false
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 25
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    AuthTokenResponse:
+      type: object
+      required: [accessToken, refreshToken, expiresIn]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Seconds
+
+    User:
+      type: object
+      required: [userId, username, email, status]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        status:
+          type: string
+          enum: [Active, Inactive, Locked]
+
+    Member:
+      type: object
+      required: [memberId, branchId, memberCode, firstName, lastName, phone, memberStatus]
+      properties:
+        memberId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        departmentId:
+          type: string
+          format: uuid
+          nullable: true
+        fellowshipId:
+          type: string
+          format: uuid
+          nullable: true
+        memberCode:
+          type: string
+        firstName:
+          type: string
+        middleName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+        gender:
+          type: string
+          enum: [Male, Female, Other]
+          nullable: true
+        dateOfBirth:
+          type: string
+          format: date
+          nullable: true
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+          nullable: true
+        memberStatus:
+          type: string
+          enum: [Active, Inactive, Transferred, Deceased]
+        baptismStatus:
+          type: string
+          enum: [Pending, Completed, Not Applicable]
+
+    MemberCreateRequest:
+      type: object
+      required: [branchId, firstName, lastName, phone]
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        departmentId:
+          type: string
+          format: uuid
+          nullable: true
+        fellowshipId:
+          type: string
+          format: uuid
+          nullable: true
+        firstName:
+          type: string
+          minLength: 1
+        middleName:
+          type: string
+        lastName:
+          type: string
+          minLength: 1
+        gender:
+          type: string
+          enum: [Male, Female, Other]
+        dateOfBirth:
+          type: string
+          format: date
+        phone:
+          type: string
+          minLength: 5
+        email:
+          type: string
+          format: email
+        memberStatus:
+          type: string
+          enum: [Active, Inactive, Transferred, Deceased]
+          default: Active
+
+    MemberUpdateRequest:
+      type: object
+      properties:
+        departmentId:
+          type: string
+          format: uuid
+          nullable: true
+        fellowshipId:
+          type: string
+          format: uuid
+          nullable: true
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        memberStatus:
+          type: string
+          enum: [Active, Inactive, Transferred, Deceased]
+
+    PagedMemberResponse:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Member"
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+
+    Visitor:
+      type: object
+      required: [visitorId, branchId, visitorCode, firstName, firstAttendanceDate, followUpStatus]
+      properties:
+        visitorId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        visitorCode:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        invitedBy:
+          type: string
+          nullable: true
+        firstAttendanceDate:
+          type: string
+          format: date
+        firstAttendanceService:
+          type: string
+          nullable: true
+        followUpStatus:
+          type: string
+          enum: [Pending, Contacted, Assimilated, Closed]
+
+    VisitorCreateRequest:
+      type: object
+      required: [branchId, firstName, firstAttendanceDate]
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        invitedBy:
+          type: string
+        firstAttendanceDate:
+          type: string
+          format: date
+        firstAttendanceService:
+          type: string
+
+    VisitorListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Visitor"
+
+    NewConvert:
+      type: object
+      required: [newConvertId, branchId, fullName, decisionDate, baptismStatus]
+      properties:
+        newConvertId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        decisionDate:
+          type: string
+          format: date
+        decisionEvent:
+          type: string
+          nullable: true
+        assignedCounselor:
+          type: string
+          nullable: true
+        baptismStatus:
+          type: string
+          enum: [Pending, Completed]
+        discipleshipStatus:
+          type: string
+          enum: [Not Started, In Progress, Completed]
+
+    NewConvertCreateRequest:
+      type: object
+      required: [branchId, fullName, decisionDate]
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        fullName:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        decisionDate:
+          type: string
+          format: date
+        decisionEvent:
+          type: string
+        assignedCounselor:
+          type: string
+
+    NewConvertListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NewConvert"
+
+    AttendanceSession:
+      type: object
+      required: [attendanceSessionId, branchId, sessionTitle, sessionType, sessionDate]
+      properties:
+        attendanceSessionId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        sessionTitle:
+          type: string
+        sessionType:
+          type: string
+          enum:
+            - Sunday Service
+            - Midweek Service
+            - Workers Meeting
+            - Bible Study
+            - Fellowship Meeting
+            - Department Meeting
+            - Event Attendance
+            - Training Attendance
+        sessionDate:
+          type: string
+          format: date
+
+    AttendanceSessionCreateRequest:
+      type: object
+      required: [branchId, sessionTitle, sessionType, sessionDate]
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        sessionTitle:
+          type: string
+        sessionType:
+          type: string
+          enum:
+            - Sunday Service
+            - Midweek Service
+            - Workers Meeting
+            - Bible Study
+            - Fellowship Meeting
+            - Department Meeting
+            - Event Attendance
+            - Training Attendance
+        sessionDate:
+          type: string
+          format: date
+
+    AttendanceSessionListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttendanceSession"
+
+    AttendanceRecord:
+      type: object
+      required: [attendanceRecordId, attendanceSessionId, personName, personType, isPresent]
+      properties:
+        attendanceRecordId:
+          type: string
+          format: uuid
+        attendanceSessionId:
+          type: string
+          format: uuid
+        memberId:
+          type: string
+          format: uuid
+          nullable: true
+        visitorId:
+          type: string
+          format: uuid
+          nullable: true
+        personName:
+          type: string
+        personType:
+          type: string
+          enum: [Member, Visitor]
+        isPresent:
+          type: boolean
+
+    AttendanceRecordCreateRequest:
+      type: object
+      required: [attendanceSessionId, personName, personType, isPresent]
+      properties:
+        attendanceSessionId:
+          type: string
+          format: uuid
+        memberId:
+          type: string
+          format: uuid
+          nullable: true
+        visitorId:
+          type: string
+          format: uuid
+          nullable: true
+        personName:
+          type: string
+        personType:
+          type: string
+          enum: [Member, Visitor]
+        isPresent:
+          type: boolean
+
+    FollowUpRecord:
+      type: object
+      required: [followUpRecordId, branchId, actionType, actionDate, status]
+      properties:
+        followUpRecordId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        visitorId:
+          type: string
+          format: uuid
+          nullable: true
+        newConvertId:
+          type: string
+          format: uuid
+          nullable: true
+        memberId:
+          type: string
+          format: uuid
+          nullable: true
+        actionType:
+          type: string
+          enum: [Call, SMS, Visit, Counseling, Prayer]
+        outcome:
+          type: string
+          enum: [Successful, No Response, Rescheduled, Escalated]
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        actionDate:
+          type: string
+          format: date-time
+        nextActionDate:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+          enum: [Open, In Progress, Closed]
+
+    FollowUpCreateRequest:
+      type: object
+      required: [branchId, actionType, status]
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        visitorId:
+          type: string
+          format: uuid
+        newConvertId:
+          type: string
+          format: uuid
+        memberId:
+          type: string
+          format: uuid
+        actionType:
+          type: string
+          enum: [Call, SMS, Visit, Counseling, Prayer]
+        outcome:
+          type: string
+          enum: [Successful, No Response, Rescheduled, Escalated]
+        notes:
+          type: string
+        nextActionDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [Open, In Progress, Closed]
+
+    FollowUpListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FollowUpRecord"
+
+    DashboardSummary:
+      type: object
+      required:
+        - totalMembers
+        - activeMembers
+        - visitors
+        - newConverts
+        - attendanceRecords
+        - pendingFollowUp
+      properties:
+        totalMembers:
+          type: integer
+        activeMembers:
+          type: integer
+        visitors:
+          type: integer
+        newConverts:
+          type: integer
+        attendanceRecords:
+          type: integer
+        pendingFollowUp:
+          type: integer
+        absentees:
+          type: integer
+
+    ReportSummary:
+      type: object
+      required: [generatedAt, metrics]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        metrics:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: integer
+              - type: number
+              - type: string

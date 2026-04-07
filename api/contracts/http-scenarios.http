@@ -1,0 +1,43 @@
+### Login
+POST http://localhost:8080/v1/auth/login
+Content-Type: application/json
+
+{
+  "usernameOrEmail": "admin@membercare.local",
+  "password": "ChangeMe123!"
+}
+
+### Dashboard Summary (replace token)
+GET http://localhost:8080/v1/dashboard/summary
+Authorization: Bearer {{token}}
+
+### List Members by Branch (replace branch uuid)
+GET http://localhost:8080/v1/members?branchId={{branchId}}&page=1&pageSize=20
+Authorization: Bearer {{token}}
+
+### Create Visitor
+POST http://localhost:8080/v1/visitors
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "branchId": "{{branchId}}",
+  "firstName": "Ruth",
+  "lastName": "Daniel",
+  "phone": "08030003000",
+  "firstAttendanceDate": "2026-04-07",
+  "firstAttendanceService": "Sunday Worship",
+  "invitedBy": "Grace Johnson"
+}
+
+### Create Attendance Session
+POST http://localhost:8080/v1/attendance/sessions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "branchId": "{{branchId}}",
+  "sessionTitle": "Midweek Service",
+  "sessionType": "Midweek Service",
+  "sessionDate": "2026-04-09"
+}

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>MemberCare | Church Management MVP</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+	<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet" />
+	<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+	<div class="page-bg"></div>
+
+	<main class="app">
+		<section class="top-rail">
+			<div>
+				<p class="eyebrow">Church Management and Member Care</p>
+				<h1>MemberCare MVP</h1>
+			</div>
+			<div class="session-card">
+				<label for="roleSelect">Role</label>
+				<select id="roleSelect">
+					<option value="super_admin">Super Administrator</option>
+					<option value="church_admin" selected>Church Administrator</option>
+					<option value="pastor">Pastor / Minister</option>
+					<option value="follow_up">Follow-Up Officer</option>
+					<option value="attendance">Attendance Officer</option>
+				</select>
+				<label for="branchSelect">Branch</label>
+				<select id="branchSelect">
+					<option value="All">All Branches</option>
+					<option value="Central" selected>Central</option>
+					<option value="North">North</option>
+					<option value="South">South</option>
+				</select>
+				<button id="applySessionBtn" class="btn btn-solid">Apply</button>
+			</div>
+		</section>
+
+		<section class="layout">
+			<aside class="sidebar">
+				<button class="nav-btn active" data-view="dashboard">Dashboard</button>
+				<button class="nav-btn" data-view="members">Members</button>
+				<button class="nav-btn" data-view="visitors">Visitors</button>
+				<button class="nav-btn" data-view="converts">New Converts</button>
+				<button class="nav-btn" data-view="attendance">Attendance</button>
+				<button class="nav-btn" data-view="followup">Follow-Up</button>
+				<button class="nav-btn" data-view="reports">Reports</button>
+			</aside>
+
+			<section class="content">
+				<article id="view-dashboard" class="view active">
+					<div class="panel">
+						<h2>Operational Snapshot</h2>
+						<p>Live summary by branch and role access.</p>
+						<div id="kpiGrid" class="kpi-grid"></div>
+					</div>
+
+					<div class="panel split">
+						<div>
+							<h3>Attendance Trend (last 4 sessions)</h3>
+							<div id="trendChart" class="trend-chart"></div>
+						</div>
+						<div>
+							<h3>Alerts</h3>
+							<ul id="alertList" class="alert-list"></ul>
+						</div>
+					</div>
+				</article>
+
+				<article id="view-members" class="view">
+					<div class="panel">
+						<h2>Member Management</h2>
+						<form id="memberForm" class="grid-form">
+							<input name="fullName" placeholder="Full name" required />
+							<input name="phone" placeholder="Phone" required />
+							<input name="email" placeholder="Email" type="email" />
+							<select name="status" required>
+								<option value="Active">Active</option>
+								<option value="Inactive">Inactive</option>
+								<option value="Transferred">Transferred</option>
+							</select>
+							<select name="department" required>
+								<option value="Choir">Choir</option>
+								<option value="Ushers">Ushers</option>
+								<option value="Media">Media</option>
+								<option value="Protocol">Protocol</option>
+							</select>
+							<select name="fellowship" required>
+								<option value="Faith Cell">Faith Cell</option>
+								<option value="Grace Cell">Grace Cell</option>
+								<option value="Hope Cell">Hope Cell</option>
+							</select>
+							<button class="btn btn-solid" type="submit">Add Member</button>
+						</form>
+					</div>
+					<div class="panel">
+						<h3>Members</h3>
+						<input id="memberSearch" class="search" placeholder="Search members" />
+						<div class="table-wrap">
+							<table>
+								<thead>
+									<tr>
+										<th>ID</th>
+										<th>Name</th>
+										<th>Phone</th>
+										<th>Status</th>
+										<th>Department</th>
+										<th>Fellowship</th>
+										<th>Branch</th>
+									</tr>
+								</thead>
+								<tbody id="memberRows"></tbody>
+							</table>
+						</div>
+					</div>
+				</article>
+
+				<article id="view-visitors" class="view">
+					<div class="panel">
+						<h2>Visitor / First-Timer Management</h2>
+						<form id="visitorForm" class="grid-form">
+							<input name="fullName" placeholder="Visitor name" required />
+							<input name="phone" placeholder="Phone" required />
+							<input name="serviceDate" type="date" required />
+							<input name="invitedBy" placeholder="Invited by" />
+							<select name="followUpStatus">
+								<option value="Pending">Pending</option>
+								<option value="Contacted">Contacted</option>
+								<option value="Assimilated">Assimilated</option>
+							</select>
+							<button class="btn btn-solid" type="submit">Add Visitor</button>
+						</form>
+					</div>
+					<div class="panel">
+						<h3>Visitors Queue</h3>
+						<div class="table-wrap">
+							<table>
+								<thead>
+									<tr>
+										<th>ID</th>
+										<th>Name</th>
+										<th>Service Date</th>
+										<th>Status</th>
+										<th>Branch</th>
+										<th>Action</th>
+									</tr>
+								</thead>
+								<tbody id="visitorRows"></tbody>
+							</table>
+						</div>
+					</div>
+				</article>
+
+				<article id="view-converts" class="view">
+					<div class="panel">
+						<h2>New Convert Management</h2>
+						<form id="convertForm" class="grid-form">
+							<input name="fullName" placeholder="Convert name" required />
+							<input name="decisionDate" type="date" required />
+							<input name="eventName" placeholder="Decision event" required />
+							<input name="counselor" placeholder="Assigned counselor" />
+							<select name="baptismStatus">
+								<option value="Pending">Pending</option>
+								<option value="Completed">Completed</option>
+							</select>
+							<button class="btn btn-solid" type="submit">Add Convert</button>
+						</form>
+					</div>
+					<div class="panel">
+						<h3>Convert Tracking</h3>
+						<div class="table-wrap">
+							<table>
+								<thead>
+									<tr>
+										<th>ID</th>
+										<th>Name</th>
+										<th>Decision Date</th>
+										<th>Baptism</th>
+										<th>Class</th>
+										<th>Branch</th>
+									</tr>
+								</thead>
+								<tbody id="convertRows"></tbody>
+							</table>
+						</div>
+					</div>
+				</article>
+
+				<article id="view-attendance" class="view">
+					<div class="panel split">
+						<div>
+							<h2>Create Attendance Session</h2>
+							<form id="sessionForm" class="grid-form one-col">
+								<input name="title" placeholder="Session title" required />
+								<select name="type">
+									<option value="Sunday Service">Sunday Service</option>
+									<option value="Midweek Service">Midweek Service</option>
+									<option value="Fellowship Meeting">Fellowship Meeting</option>
+									<option value="Department Meeting">Department Meeting</option>
+								</select>
+								<input name="date" type="date" required />
+								<button class="btn btn-solid" type="submit">Create Session</button>
+							</form>
+						</div>
+						<div>
+							<h2>Record Attendance</h2>
+							<form id="attendanceForm" class="grid-form one-col">
+								<select name="sessionId" id="attendanceSessionSelect" required></select>
+								<input name="personName" placeholder="Member or visitor name" required />
+								<select name="personType">
+									<option value="Member">Member</option>
+									<option value="Visitor">Visitor</option>
+								</select>
+								<select name="present">
+									<option value="true">Present</option>
+									<option value="false">Absent</option>
+								</select>
+								<button class="btn btn-solid" type="submit">Save Record</button>
+							</form>
+						</div>
+					</div>
+					<div class="panel">
+						<h3>Attendance Records</h3>
+						<div class="table-wrap">
+							<table>
+								<thead>
+									<tr>
+										<th>Session</th>
+										<th>Date</th>
+										<th>Name</th>
+										<th>Type</th>
+										<th>Status</th>
+										<th>Branch</th>
+									</tr>
+								</thead>
+								<tbody id="attendanceRows"></tbody>
+							</table>
+						</div>
+					</div>
+				</article>
+
+				<article id="view-followup" class="view">
+					<div class="panel">
+						<h2>Follow-Up and Pastoral Care</h2>
+						<form id="followupForm" class="grid-form">
+							<input name="personName" placeholder="Person name" required />
+							<select name="category">
+								<option value="Call">Call</option>
+								<option value="Visit">Visit</option>
+								<option value="Counseling">Counseling</option>
+								<option value="Prayer">Prayer Request</option>
+								<option value="Welfare">Welfare</option>
+							</select>
+							<input name="nextActionDate" type="date" required />
+							<select name="status">
+								<option value="Open">Open</option>
+								<option value="In Progress">In Progress</option>
+								<option value="Closed">Closed</option>
+							</select>
+							<label class="check-wrap">
+								<input name="confidential" type="checkbox" />
+								Confidential
+							</label>
+							<button class="btn btn-solid" type="submit">Add Case</button>
+						</form>
+					</div>
+					<div class="panel">
+						<h3>Follow-Up Cases</h3>
+						<div class="table-wrap">
+							<table>
+								<thead>
+									<tr>
+										<th>Person</th>
+										<th>Category</th>
+										<th>Next Action</th>
+										<th>Status</th>
+										<th>Confidential</th>
+										<th>Branch</th>
+									</tr>
+								</thead>
+								<tbody id="followupRows"></tbody>
+							</table>
+						</div>
+					</div>
+				</article>
+
+				<article id="view-reports" class="view">
+					<div class="panel">
+						<h2>Reports and Analytics</h2>
+						<div id="reportCards" class="kpi-grid"></div>
+						<div class="actions">
+							<button id="exportBtn" class="btn btn-ghost">Export Snapshot (JSON)</button>
+						</div>
+					</div>
+				</article>
+			</section>
+		</section>
+	</main>
+
+	<script src="script.js"></script>
+</body>
+</html>
