@@ -1,12 +1,15 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MemberCare.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("v1/admin")]
 public sealed class AdminController : ControllerBase
 {
     [HttpGet("users")]
+    [Authorize(Policy = "ChurchAdmin")]
     public IActionResult ListUsers()
     {
         return Ok(new

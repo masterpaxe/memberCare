@@ -1,9 +1,15 @@
-const STORAGE_KEY = "membercare.m1";
+const STORAGE_KEY = "membercare.session";
+const API_BASE = "http://localhost:8080/v1";
 
 const app = {
 	session: {
 		role: "church_admin",
-		branch: "Central"
+		branch: "All"
+	},
+	api: {
+		connected: false,
+		token: "",
+		branchId: ""
 	},
 	data: {
 		members: [],
@@ -47,109 +53,198 @@ function uid(prefix) {
 
 function save() {
 	localStorage.setItem(STORAGE_KEY, JSON.stringify({
-		session: app.session,
-		data: app.data
+		session: app.session
 	}));
 }
 
 function load() {
 	const raw = localStorage.getItem(STORAGE_KEY);
 	if (!raw) {
-		seedData();
-		save();
 		return;
 	}
 	try {
 		const parsed = JSON.parse(raw);
 		app.session = parsed.session || app.session;
-		app.data = parsed.data || app.data;
-	} catch (err) {
-		seedData();
-		save();
+	} catch {
+		// Ignore invalid local session payload.
 	}
-}
-
-function seedData() {
-	app.data.members = [
-		{
-			id: uid("M"),
-			fullName: "Grace Johnson",
-			phone: "08030001000",
-			email: "grace.j@example.org",
-			status: "Active",
-			department: "Choir",
-			fellowship: "Faith Cell",
-			branch: "Central"
-		},
-		{
-			id: uid("M"),
-			fullName: "Samuel Ade",
-			phone: "08030002000",
-			email: "samuel.a@example.org",
-			status: "Inactive",
-			department: "Media",
-			fellowship: "Hope Cell",
-			branch: "North"
-		}
-	];
-
-	app.data.visitors = [
-		{
-			id: uid("V"),
-			fullName: "Ruth Daniel",
-			phone: "08030003000",
-			serviceDate: todayISO(),
-			invitedBy: "Grace Johnson",
-			followUpStatus: "Pending",
-			branch: "Central"
-		}
-	];
-
-	app.data.converts = [
-		{
-			id: uid("C"),
-			fullName: "Elijah Musa",
-			decisionDate: todayISO(),
-			eventName: "Sunday Worship",
-			counselor: "Pastor Luke",
-			baptismStatus: "Pending",
-			classStatus: "Enrolled",
-			branch: "Central"
-		}
-	];
-
-	const s1 = {
-		id: uid("S"),
-		title: "Sunday Worship",
-		type: "Sunday Service",
-		date: todayISO(),
-		branch: "Central"
-	};
-
-	app.data.attendanceSessions = [s1];
-	app.data.attendanceRecords = [
-		{ sessionId: s1.id, personName: "Grace Johnson", personType: "Member", present: true, branch: "Central" },
-		{ sessionId: s1.id, personName: "Ruth Daniel", personType: "Visitor", present: true, branch: "Central" }
-	];
-
-	app.data.followups = [
-		{
-			id: uid("F"),
-			personName: "Ruth Daniel",
-			category: "Call",
-			nextActionDate: todayISO(),
-			status: "Open",
-			confidential: false,
-			branch: "Central"
-		}
-	];
 }
 
 function todayISO() {
 	return new Date().toISOString().slice(0, 10);
 }
 
+function get(obj, ...keys) {
+	for (const key of keys) {
+		if (obj && obj[key] !== undefined && obj[key] !== null) {
+			return obj[key];
+		}
+	}
+	return "";
+}
+
+function parseJwtPayload(token) {
+	try {
+		const payload = token.split(".")[1];
+		const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+		const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+		return JSON.parse(atob(padded));
+	} catch {
+		return null;
+	}
+}
+
+function usernameForRole(role) {
+	switch (role) {
+		case "super_admin":
+			return "admin";
+		case "pastor":
+			return "pastor";
+		case "attendance":
+			return "attendance";
+		case "follow_up":
+			return "visitorcare";
+		default:
+			return "churchadmin";
+	}
+}
+
+async function apiRequest(path, options = {}) {
+	const headers = {
+		...(options.headers || {})
+	};
+	if (app.api.token) {
+		headers.Authorization = `Bearer ${app.api.token}`;
+	}
+
+	const response = await fetch(`${API_BASE}${path}`, {
+		...options,
+		headers
+	});
+
+	if (!response.ok) {
+		const text = await response.text();
+		throw new Error(`API ${response.status}: ${text || response.statusText}`);
+	}
+
+	if (response.status === 204) {
+		return null;
+	}
+
+	return response.json();
+}
+
+async function connectApi() {
+	const username = usernameForRole(app.session.role);
+	const auth = await apiRequest("/auth/login", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ username, password: "test" })
+	});
+
+	app.api.token = get(auth, "accessToken", "AccessToken");
+	const payload = parseJwtPayload(app.api.token);
+	app.api.branchId = get(payload, "branch_id");
+	app.api.connected = true;
+}
+
+function mapMember(item) {
+	return {
+		id: get(item, "memberId", "MemberId") || uid("M"),
+		fullName: `${get(item, "firstName", "FirstName")} ${get(item, "lastName", "LastName")}`.trim(),
+		phone: get(item, "phone", "Phone"),
+		email: get(item, "email", "Email"),
+		status: get(item, "memberStatus", "MemberStatus") || "Active",
+		department: "-",
+		fellowship: "-",
+		branch: get(item, "branchId", "BranchId") || app.api.branchId || "Current"
+	};
+}
+
+function mapVisitor(item) {
+	return {
+		id: get(item, "visitorId", "VisitorId") || uid("V"),
+		fullName: `${get(item, "firstName", "FirstName")} ${get(item, "lastName", "LastName")}`.trim(),
+		phone: get(item, "phone", "Phone"),
+		serviceDate: get(item, "firstAttendanceDate", "FirstAttendanceDate"),
+		invitedBy: "-",
+		followUpStatus: get(item, "followUpStatus", "FollowUpStatus") || "Pending",
+		branch: get(item, "branchId", "BranchId") || app.api.branchId || "Current"
+	};
+}
+
+function mapConvert(item) {
+	return {
+		id: get(item, "newConvertId", "NewConvertId") || uid("C"),
+		fullName: get(item, "fullName", "FullName"),
+		decisionDate: get(item, "decisionDate", "DecisionDate"),
+		eventName: "-",
+		counselor: "-",
+		baptismStatus: get(item, "baptismStatus", "BaptismStatus") || "Pending",
+		classStatus: "Enrolled",
+		branch: get(item, "branchId", "BranchId") || app.api.branchId || "Current"
+	};
+}
+
+function mapSession(item) {
+	return {
+		id: get(item, "attendanceSessionId", "AttendanceSessionId") || uid("S"),
+		title: get(item, "sessionTitle", "SessionTitle"),
+		type: get(item, "sessionType", "SessionType"),
+		date: get(item, "sessionDate", "SessionDate"),
+		branch: get(item, "branchId", "BranchId") || app.api.branchId || "Current"
+	};
+}
+
+function mapFollowup(item) {
+	return {
+		id: get(item, "followUpRecordId", "FollowUpRecordId") || uid("F"),
+		personName: get(item, "personName", "PersonName") || "-",
+		category: get(item, "actionType", "ActionType") || "Call",
+		nextActionDate: String(get(item, "actionDate", "ActionDate") || "").slice(0, 10),
+		status: get(item, "status", "Status") || "Open",
+		confidential: false,
+		branch: get(item, "branchId", "BranchId") || app.api.branchId || "Current"
+	};
+}
+
+async function refreshFromApi() {
+	const [members, visitors, converts, sessions, followups, dashboard] = await Promise.all([
+		apiRequest("/members?page=1&pageSize=200"),
+		apiRequest("/visitors"),
+		apiRequest("/new-converts"),
+		apiRequest("/attendance/sessions"),
+		apiRequest("/follow-up/records"),
+		apiRequest("/dashboard/summary")
+	]);
+
+	app.data.members = (get(members, "items", "Items") || []).map(mapMember);
+	app.data.visitors = (get(visitors, "items", "Items") || []).map(mapVisitor);
+	app.data.converts = (get(converts, "items", "Items") || []).map(mapConvert);
+	app.data.attendanceSessions = (get(sessions, "items", "Items") || []).map(mapSession);
+	app.data.followups = (get(followups, "items", "Items") || []).map(mapFollowup);
+
+	// No API endpoint exists yet for attendance record listing, so keep local records for entries created from this UI.
+	if (!Array.isArray(app.data.attendanceRecords)) {
+		app.data.attendanceRecords = [];
+	}
+
+	app.data.dashboard = {
+		totalMembers: get(dashboard, "totalMembers", "TotalMembers") || 0,
+		activeMembers: get(dashboard, "activeMembers", "ActiveMembers") || 0,
+		visitors: get(dashboard, "visitors", "Visitors") || 0,
+		newConverts: get(dashboard, "newConverts", "NewConverts") || 0,
+		attendanceRecords: get(dashboard, "attendanceRecords", "AttendanceRecords") || 0,
+		pendingFollowUp: get(dashboard, "pendingFollowUp", "PendingFollowUp") || 0,
+		absentees: get(dashboard, "absentees", "Absentees") || 0
+	};
+}
+
 function canViewBranch(itemBranch) {
+	if (app.api.connected) {
+		// Server-side branch scoping already applies in API mode.
+		return true;
+	}
 	return app.session.branch === "All" || app.session.branch === "All Branches" || itemBranch === app.session.branch;
 }
 
@@ -276,6 +371,55 @@ function renderFollowups() {
 }
 
 function renderDashboard() {
+	if (app.api.connected && app.data.dashboard) {
+		const cards = [
+			["Total Members", app.data.dashboard.totalMembers],
+			["Active Members", app.data.dashboard.activeMembers],
+			["Visitors", app.data.dashboard.visitors],
+			["New Converts", app.data.dashboard.newConverts],
+			["Attendance Records", app.data.dashboard.attendanceRecords],
+			["Pending Follow-Up", app.data.dashboard.pendingFollowUp],
+			["Absentees", app.data.dashboard.absentees],
+			["Sessions", app.data.attendanceSessions.length]
+		];
+
+		el.kpiGrid.innerHTML = cards
+			.map(([label, value]) => `
+				<div class="kpi">
+					<div class="label">${label}</div>
+					<div class="value">${value}</div>
+				</div>
+			`)
+			.join("");
+
+		const recent = app.data.attendanceSessions
+			.slice(-4)
+			.map((s) => ({ label: shortLabel(s.title), total: 0 }));
+		el.trendChart.innerHTML = recent
+			.map((r) => `
+				<div class="bar-row">
+					<span>${r.label}</span>
+					<div class="bar"><span style="width:0%"></span></div>
+					<strong>${r.total}</strong>
+				</div>
+			`)
+			.join("");
+
+		const alertItems = [];
+		if (app.data.dashboard.pendingFollowUp > 0) {
+			alertItems.push(`${app.data.dashboard.pendingFollowUp} follow-up cases need action.`);
+		}
+		if (app.data.dashboard.visitors > 0) {
+			alertItems.push(`${app.data.dashboard.visitors} visitors in assimilation queue.`);
+		}
+		if (app.data.dashboard.absentees > 0) {
+			alertItems.push(`${app.data.dashboard.absentees} absentee records captured recently.`);
+		}
+		alertItems.push("Connected to live API data.");
+		el.alertList.innerHTML = alertItems.map((item) => `<li>${item}</li>`).join("");
+		return;
+	}
+
 	const members = getVisible(app.data.members);
 	const visitors = getVisible(app.data.visitors);
 	const converts = getVisible(app.data.converts);
@@ -387,25 +531,10 @@ function switchView(viewName) {
 }
 
 function convertVisitorToMember(visitorId) {
-	const visitor = app.data.visitors.find((v) => v.id === visitorId);
-	if (!visitor) {
-		return;
-	}
-
-	app.data.members.push({
-		id: uid("M"),
-		fullName: visitor.fullName,
-		phone: visitor.phone,
-		email: "",
-		status: "Active",
-		department: "Ushers",
-		fellowship: "Faith Cell",
-		branch: visitor.branch
-	});
-
-	visitor.followUpStatus = "Assimilated";
-	save();
-	renderAll();
+	apiRequest(`/visitors/${visitorId}/convert`, { method: "POST" })
+		.then(() => refreshFromApi())
+		.then(() => renderAll())
+		.catch((err) => alert(`Conversion failed: ${err.message}`));
 }
 
 function attachEvents() {
@@ -413,113 +542,160 @@ function attachEvents() {
 		btn.addEventListener("click", () => switchView(btn.dataset.view));
 	});
 
-	el.applySessionBtn.addEventListener("click", () => {
+	el.applySessionBtn.addEventListener("click", async () => {
 		app.session.role = el.roleSelect.value;
 		app.session.branch = el.branchSelect.value;
 		save();
-		renderAll();
+		try {
+			await connectApi();
+			await refreshFromApi();
+			renderAll();
+		} catch (err) {
+			alert(`API connection failed: ${err.message}`);
+		}
 	});
 
 	el.memberSearch.addEventListener("input", renderMembers);
 
-	el.memberForm.addEventListener("submit", (event) => {
+	el.memberForm.addEventListener("submit", async (event) => {
 		event.preventDefault();
 		const form = new FormData(el.memberForm);
-		app.data.members.push({
-			id: uid("M"),
-			fullName: form.get("fullName"),
-			phone: form.get("phone"),
-			email: form.get("email"),
-			status: form.get("status"),
-			department: form.get("department"),
-			fellowship: form.get("fellowship"),
-			branch: app.session.branch === "All" ? "Central" : app.session.branch
-		});
-		el.memberForm.reset();
-		save();
-		renderAll();
+		try {
+			await apiRequest("/members", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					branchId: app.api.branchId,
+					firstName: String(form.get("fullName") || "").trim().split(" ")[0] || "Member",
+					lastName: String(form.get("fullName") || "").trim().split(" ").slice(1).join(" ") || "User",
+					phone: form.get("phone"),
+					email: form.get("email")
+				})
+			});
+			el.memberForm.reset();
+			await refreshFromApi();
+			renderAll();
+		} catch (err) {
+			alert(`Could not create member: ${err.message}`);
+		}
 	});
 
-	el.visitorForm.addEventListener("submit", (event) => {
+	el.visitorForm.addEventListener("submit", async (event) => {
 		event.preventDefault();
 		const form = new FormData(el.visitorForm);
-		app.data.visitors.push({
-			id: uid("V"),
-			fullName: form.get("fullName"),
-			phone: form.get("phone"),
-			serviceDate: form.get("serviceDate"),
-			invitedBy: form.get("invitedBy"),
-			followUpStatus: form.get("followUpStatus"),
-			branch: app.session.branch === "All" ? "Central" : app.session.branch
-		});
-		el.visitorForm.reset();
-		save();
-		renderAll();
+		try {
+			await apiRequest("/visitors", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					branchId: app.api.branchId,
+					firstName: String(form.get("fullName") || "").trim().split(" ")[0] || "Visitor",
+					lastName: String(form.get("fullName") || "").trim().split(" ").slice(1).join(" ") || "Person",
+					phone: form.get("phone"),
+					firstAttendanceDate: form.get("serviceDate") || todayISO()
+				})
+			});
+			el.visitorForm.reset();
+			await refreshFromApi();
+			renderAll();
+		} catch (err) {
+			alert(`Could not create visitor: ${err.message}`);
+		}
 	});
 
-	el.convertForm.addEventListener("submit", (event) => {
+	el.convertForm.addEventListener("submit", async (event) => {
 		event.preventDefault();
 		const form = new FormData(el.convertForm);
-		app.data.converts.push({
-			id: uid("C"),
-			fullName: form.get("fullName"),
-			decisionDate: form.get("decisionDate"),
-			eventName: form.get("eventName"),
-			counselor: form.get("counselor"),
-			baptismStatus: form.get("baptismStatus"),
-			classStatus: "Enrolled",
-			branch: app.session.branch === "All" ? "Central" : app.session.branch
-		});
-		el.convertForm.reset();
-		save();
-		renderAll();
+		try {
+			await apiRequest("/new-converts", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					branchId: app.api.branchId,
+					fullName: form.get("fullName"),
+					decisionDate: form.get("decisionDate") || todayISO(),
+					assignedCounselor: form.get("counselor") || ""
+				})
+			});
+			el.convertForm.reset();
+			await refreshFromApi();
+			renderAll();
+		} catch (err) {
+			alert(`Could not create convert: ${err.message}`);
+		}
 	});
 
-	el.sessionForm.addEventListener("submit", (event) => {
+	el.sessionForm.addEventListener("submit", async (event) => {
 		event.preventDefault();
 		const form = new FormData(el.sessionForm);
-		app.data.attendanceSessions.push({
-			id: uid("S"),
-			title: form.get("title"),
-			type: form.get("type"),
-			date: form.get("date"),
-			branch: app.session.branch === "All" ? "Central" : app.session.branch
-		});
-		el.sessionForm.reset();
-		save();
-		renderAll();
+		try {
+			await apiRequest("/attendance/sessions", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					branchId: app.api.branchId,
+					sessionTitle: form.get("title"),
+					sessionType: form.get("type"),
+					sessionDate: form.get("date") || todayISO()
+				})
+			});
+			el.sessionForm.reset();
+			await refreshFromApi();
+			renderAll();
+		} catch (err) {
+			alert(`Could not create session: ${err.message}`);
+		}
 	});
 
-	el.attendanceForm.addEventListener("submit", (event) => {
+	el.attendanceForm.addEventListener("submit", async (event) => {
 		event.preventDefault();
 		const form = new FormData(el.attendanceForm);
-		app.data.attendanceRecords.push({
-			sessionId: form.get("sessionId"),
-			personName: form.get("personName"),
-			personType: form.get("personType"),
-			present: form.get("present") === "true",
-			branch: app.session.branch === "All" ? "Central" : app.session.branch
-		});
-		el.attendanceForm.reset();
-		save();
-		renderAll();
+		try {
+			await apiRequest("/attendance/records", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					attendanceSessionId: form.get("sessionId"),
+					personName: form.get("personName"),
+					personType: form.get("personType"),
+					isPresent: form.get("present") === "true"
+				})
+			});
+			const session = app.data.attendanceSessions.find((s) => s.id === form.get("sessionId"));
+			app.data.attendanceRecords.push({
+				sessionId: form.get("sessionId"),
+				personName: form.get("personName"),
+				personType: form.get("personType"),
+				present: form.get("present") === "true",
+				branch: session ? session.branch : (app.api.branchId || "Current")
+			});
+			el.attendanceForm.reset();
+			await refreshFromApi();
+			renderAll();
+		} catch (err) {
+			alert(`Could not create attendance record: ${err.message}`);
+		}
 	});
 
-	el.followupForm.addEventListener("submit", (event) => {
+	el.followupForm.addEventListener("submit", async (event) => {
 		event.preventDefault();
 		const form = new FormData(el.followupForm);
-		app.data.followups.push({
-			id: uid("F"),
-			personName: form.get("personName"),
-			category: form.get("category"),
-			nextActionDate: form.get("nextActionDate"),
-			status: form.get("status"),
-			confidential: form.get("confidential") === "on",
-			branch: app.session.branch === "All" ? "Central" : app.session.branch
-		});
-		el.followupForm.reset();
-		save();
-		renderAll();
+		try {
+			await apiRequest("/follow-up/records", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					branchId: app.api.branchId,
+					actionType: form.get("category"),
+					status: form.get("status")
+				})
+			});
+			el.followupForm.reset();
+			await refreshFromApi();
+			renderAll();
+		} catch (err) {
+			alert(`Could not create follow-up: ${err.message}`);
+		}
 	});
 
 	el.exportBtn.addEventListener("click", () => {
@@ -556,7 +732,13 @@ function init() {
 	el.roleSelect.value = app.session.role;
 	el.branchSelect.value = app.session.branch;
 	attachEvents();
-	renderAll();
+	connectApi()
+		.then(() => refreshFromApi())
+		.then(() => renderAll())
+		.catch((err) => {
+			alert(`Could not connect to API. Ensure backend is running on ${API_BASE}. Error: ${err.message}`);
+			renderAll();
+		});
 }
 
 init();

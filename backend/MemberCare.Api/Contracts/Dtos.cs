@@ -1,6 +1,6 @@
 namespace MemberCare.Api.Contracts;
 
-public sealed record AuthLoginRequest(string UsernameOrEmail, string Password);
+public sealed record AuthLoginRequest(string Username, string Password);
 public sealed record AuthTokenResponse(string AccessToken, string RefreshToken, int ExpiresIn);
 
 public sealed record DashboardSummaryResponse(

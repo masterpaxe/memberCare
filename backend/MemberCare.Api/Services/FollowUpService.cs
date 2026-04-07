@@ -7,21 +7,32 @@ namespace MemberCare.Api.Services;
 public sealed class FollowUpService
 {
     private readonly SqlConnectionFactory _connectionFactory;
+    private readonly BranchContext _branchContext;
 
-    public FollowUpService(SqlConnectionFactory connectionFactory)
+    public FollowUpService(SqlConnectionFactory connectionFactory, BranchContext branchContext)
     {
         _connectionFactory = connectionFactory;
+        _branchContext = branchContext;
     }
 
     public IReadOnlyCollection<FollowUpRecord> List(Guid? branchId, string? status)
     {
         var where = new List<string>();
         var args = new DynamicParameters();
-        if (branchId.HasValue)
+
+        // Enforce branch scoping
+        var userBranchId = _branchContext.GetUserBranchId();
+        if (userBranchId.HasValue)
+        {
+            where.Add("branch_id = @UserBranchId");
+            args.Add("UserBranchId", userBranchId.Value);
+        }
+        else if (branchId.HasValue)
         {
             where.Add("branch_id = @BranchId");
             args.Add("BranchId", branchId.Value);
         }
+
         if (!string.IsNullOrWhiteSpace(status))
         {
             where.Add("status = @Status");
@@ -45,6 +56,14 @@ public sealed class FollowUpService
 
     public FollowUpRecord Create(FollowUpCreateRequest request)
     {
+        var userBranchId = _branchContext.GetUserBranchId();
+
+        // Enforce branch scoping: non-super-admin can only create in their assigned branch
+        if (userBranchId.HasValue && request.BranchId != userBranchId.Value)
+        {
+            throw new UnauthorizedAccessException("Cannot create follow-up records outside your assigned branch.");
+        }
+
         using var conn = _connectionFactory.CreateOpenConnection();
         return conn.QuerySingle<FollowUpRecord>(@"
             INSERT INTO follow_up_records

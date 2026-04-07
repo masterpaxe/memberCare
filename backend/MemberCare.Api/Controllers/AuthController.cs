@@ -1,5 +1,6 @@
 using MemberCare.Api.Contracts;
 using MemberCare.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MemberCare.Api.Controllers;
@@ -15,13 +16,14 @@ public sealed class AuthController : ControllerBase
         _authService = authService;
     }
 
+    [AllowAnonymous]
     [HttpPost("login")]
     [ProducesResponseType<AuthTokenResponse>(StatusCodes.Status200OK)]
     public IActionResult Login([FromBody] AuthLoginRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.UsernameOrEmail) || string.IsNullOrWhiteSpace(request.Password))
+        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
         {
-            return BadRequest(new { code = "validation_error", message = "Username/email and password are required." });
+            return BadRequest(new { code = "validation_error", message = "Username and password are required." });
         }
 
         var token = _authService.Login(request);

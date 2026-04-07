@@ -1,10 +1,12 @@
 using MemberCare.Api.Contracts;
 using MemberCare.Api.Domain;
 using MemberCare.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MemberCare.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("v1/follow-up/records")]
 public sealed class FollowUpController : ControllerBase
@@ -24,6 +26,7 @@ public sealed class FollowUpController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "FollowUpManagement")]
     [ProducesResponseType<FollowUpRecord>(StatusCodes.Status201Created)]
     public IActionResult Create([FromBody] FollowUpCreateRequest request)
     {

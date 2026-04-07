@@ -7,10 +7,12 @@ namespace MemberCare.Api.Services;
 public sealed class MemberService
 {
     private readonly SqlConnectionFactory _connectionFactory;
+    private readonly BranchContext _branchContext;
 
-    public MemberService(SqlConnectionFactory connectionFactory)
+    public MemberService(SqlConnectionFactory connectionFactory, BranchContext branchContext)
     {
         _connectionFactory = connectionFactory;
+        _branchContext = branchContext;
     }
 
     public PagedResponse<Member> List(Guid? branchId, string? status, string? search, int page, int pageSize)
@@ -21,8 +23,17 @@ public sealed class MemberService
         var whereParts = new List<string>();
         var args = new DynamicParameters();
 
-        if (branchId.HasValue)
+        // Enforce branch scoping: user can only see their assigned branch unless super_admin
+        var userBranchId = _branchContext.GetUserBranchId();
+        if (userBranchId.HasValue)
         {
+            // Non-super-admin: filter to their branch only (ignore branchId parameter)
+            whereParts.Add("branch_id = @UserBranchId");
+            args.Add("UserBranchId", userBranchId.Value);
+        }
+        else if (branchId.HasValue)
+        {
+            // Super-admin: allow filtering by specified branch
             whereParts.Add("branch_id = @BranchId");
             args.Add("BranchId", branchId.Value);
         }
@@ -67,8 +78,9 @@ public sealed class MemberService
 
     public Member? Get(Guid memberId)
     {
+        var userBranchId = _branchContext.GetUserBranchId();
         using var conn = _connectionFactory.CreateOpenConnection();
-        return conn.QuerySingleOrDefault<Member>(@"
+        var member = conn.QuerySingleOrDefault<Member>(@"
             SELECT
                 member_id AS MemberId,
                 branch_id AS BranchId,
@@ -80,10 +92,26 @@ public sealed class MemberService
                 member_status AS MemberStatus
             FROM members
             WHERE member_id = @MemberId", new { MemberId = memberId });
+
+        // Enforce branch scoping: deny access if user is not super_admin and member is not in their branch
+        if (member is not null && userBranchId.HasValue && member.BranchId != userBranchId.Value)
+        {
+            return null; // Forbidden: member not in user's branch
+        }
+
+        return member;
     }
 
     public Member Create(MemberCreateRequest request)
     {
+        var userBranchId = _branchContext.GetUserBranchId();
+
+        // Enforce branch scoping: non-super-admin can only create in their assigned branch
+        if (userBranchId.HasValue && request.BranchId != userBranchId.Value)
+        {
+            throw new UnauthorizedAccessException("Cannot create members outside your assigned branch.");
+        }
+
         using var conn = _connectionFactory.CreateOpenConnection();
         return conn.QuerySingle<Member>(@"
             INSERT INTO members
@@ -113,7 +141,20 @@ public sealed class MemberService
 
     public Member? Update(Guid memberId, MemberUpdateRequest request)
     {
+        var userBranchId = _branchContext.GetUserBranchId();
+
         using var conn = _connectionFactory.CreateOpenConnection();
+        
+        // If not super_admin, verify member belongs to user's branch before allowing update
+        if (userBranchId.HasValue)
+        {
+            var memberBranch = conn.ExecuteScalar<Guid?>("SELECT branch_id FROM members WHERE member_id = @MemberId", new { MemberId = memberId });
+            if (memberBranch != userBranchId.Value)
+            {
+                return null; // Forbidden: member not in user's branch
+            }
+        }
+
         return conn.QuerySingleOrDefault<Member>(@"
             UPDATE members
             SET
@@ -142,7 +183,20 @@ public sealed class MemberService
 
     public bool Delete(Guid memberId)
     {
+        var userBranchId = _branchContext.GetUserBranchId();
+
         using var conn = _connectionFactory.CreateOpenConnection();
+
+        // If not super_admin, verify member belongs to user's branch before allowing delete
+        if (userBranchId.HasValue)
+        {
+            var memberBranch = conn.ExecuteScalar<Guid?>("SELECT branch_id FROM members WHERE member_id = @MemberId", new { MemberId = memberId });
+            if (memberBranch != userBranchId.Value)
+            {
+                return false; // Forbidden: member not in user's branch
+            }
+        }
+
         var affected = conn.Execute("DELETE FROM members WHERE member_id = @MemberId", new { MemberId = memberId });
         return affected > 0;
     }

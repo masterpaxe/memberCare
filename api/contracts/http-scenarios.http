@@ -3,8 +3,8 @@ POST http://localhost:8080/v1/auth/login
 Content-Type: application/json
 
 {
-  "usernameOrEmail": "admin@membercare.local",
-  "password": "ChangeMe123!"
+  "username": "admin",
+  "password": "anypassword123"
 }
 
 ### Dashboard Summary (replace token)

@@ -7,10 +7,12 @@ namespace MemberCare.Api.Services;
 public sealed class AttendanceService
 {
     private readonly SqlConnectionFactory _connectionFactory;
+    private readonly BranchContext _branchContext;
 
-    public AttendanceService(SqlConnectionFactory connectionFactory)
+    public AttendanceService(SqlConnectionFactory connectionFactory, BranchContext branchContext)
     {
         _connectionFactory = connectionFactory;
+        _branchContext = branchContext;
     }
 
     public IReadOnlyCollection<AttendanceSession> ListSessions(Guid? branchId, DateOnly? fromDate, DateOnly? toDate)
@@ -18,7 +20,14 @@ public sealed class AttendanceService
         var where = new List<string>();
         var args = new DynamicParameters();
 
-        if (branchId.HasValue)
+        // Enforce branch scoping
+        var userBranchId = _branchContext.GetUserBranchId();
+        if (userBranchId.HasValue)
+        {
+            where.Add("branch_id = @UserBranchId");
+            args.Add("UserBranchId", userBranchId.Value);
+        }
+        else if (branchId.HasValue)
         {
             where.Add("branch_id = @BranchId");
             args.Add("BranchId", branchId.Value);
@@ -53,6 +62,14 @@ public sealed class AttendanceService
 
     public AttendanceSession CreateSession(AttendanceSessionCreateRequest request)
     {
+        var userBranchId = _branchContext.GetUserBranchId();
+
+        // Enforce branch scoping: non-super-admin can only create in their assigned branch
+        if (userBranchId.HasValue && request.BranchId != userBranchId.Value)
+        {
+            throw new UnauthorizedAccessException("Cannot create attendance sessions outside your assigned branch.");
+        }
+
         using var conn = _connectionFactory.CreateOpenConnection();
         return conn.QuerySingle<AttendanceSession>(@"
             INSERT INTO attendance_sessions
@@ -77,7 +94,22 @@ public sealed class AttendanceService
 
     public AttendanceRecord CreateRecord(AttendanceRecordCreateRequest request)
     {
+        var userBranchId = _branchContext.GetUserBranchId();
+
         using var conn = _connectionFactory.CreateOpenConnection();
+
+        // If not super_admin, verify attendance session belongs to user's branch
+        if (userBranchId.HasValue)
+        {
+            var sessionBranch = conn.ExecuteScalar<Guid?>(
+                "SELECT branch_id FROM attendance_sessions WHERE attendance_session_id = @SessionId",
+                new { SessionId = request.AttendanceSessionId });
+            if (sessionBranch != userBranchId.Value)
+            {
+                throw new UnauthorizedAccessException("Cannot record attendance for sessions outside your assigned branch.");
+            }
+        }
+
         return conn.QuerySingle<AttendanceRecord>(@"
             INSERT INTO attendance_records
                 (attendance_record_id, attendance_session_id, person_name, person_type, is_present)

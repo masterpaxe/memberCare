@@ -7,17 +7,27 @@ namespace MemberCare.Api.Services;
 public sealed class NewConvertService
 {
     private readonly SqlConnectionFactory _connectionFactory;
+    private readonly BranchContext _branchContext;
 
-    public NewConvertService(SqlConnectionFactory connectionFactory)
+    public NewConvertService(SqlConnectionFactory connectionFactory, BranchContext branchContext)
     {
         _connectionFactory = connectionFactory;
+        _branchContext = branchContext;
     }
 
     public IReadOnlyCollection<NewConvert> List(Guid? branchId, string? baptismStatus)
     {
         var where = new List<string>();
         var args = new DynamicParameters();
-        if (branchId.HasValue)
+
+        // Enforce branch scoping
+        var userBranchId = _branchContext.GetUserBranchId();
+        if (userBranchId.HasValue)
+        {
+            where.Add("branch_id = @UserBranchId");
+            args.Add("UserBranchId", userBranchId.Value);
+        }
+        else if (branchId.HasValue)
         {
             where.Add("branch_id = @BranchId");
             args.Add("BranchId", branchId.Value);
@@ -46,6 +56,14 @@ public sealed class NewConvertService
 
     public NewConvert Create(NewConvertCreateRequest request)
     {
+        var userBranchId = _branchContext.GetUserBranchId();
+
+        // Enforce branch scoping: non-super-admin can only create in their assigned branch
+        if (userBranchId.HasValue && request.BranchId != userBranchId.Value)
+        {
+            throw new UnauthorizedAccessException("Cannot create new converts outside your assigned branch.");
+        }
+
         using var conn = _connectionFactory.CreateOpenConnection();
         return conn.QuerySingle<NewConvert>(@"
             INSERT INTO new_converts

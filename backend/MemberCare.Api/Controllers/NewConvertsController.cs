@@ -1,10 +1,12 @@
 using MemberCare.Api.Contracts;
 using MemberCare.Api.Domain;
 using MemberCare.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MemberCare.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("v1/new-converts")]
 public sealed class NewConvertsController : ControllerBase
@@ -24,6 +26,7 @@ public sealed class NewConvertsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "VisitorManagement")]
     [ProducesResponseType<NewConvert>(StatusCodes.Status201Created)]
     public IActionResult Create([FromBody] NewConvertCreateRequest request)
     {

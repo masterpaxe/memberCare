@@ -39,9 +39,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [usernameOrEmail, password]
+              required: [username, password]
               properties:
-                usernameOrEmail:
+                username:
                   type: string
                 password:
                   type: string

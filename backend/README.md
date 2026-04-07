@@ -11,6 +11,7 @@ This folder contains the ASP.NET Core Web API scaffold for the MemberCare SRS Ph
 
 ## Implemented Endpoints (v1)
 
+- GET /v1/health
 - POST /v1/auth/login
 - POST /v1/auth/refresh
 - GET /v1/dashboard/summary
@@ -24,7 +25,7 @@ This folder contains the ASP.NET Core Web API scaffold for the MemberCare SRS Ph
 - GET /v1/reports/summary
 - GET /v1/admin/users
 
-Note: Data layer is currently in-memory for rapid scaffolding and contract verification.
+Data layer is now PostgreSQL-backed through Npgsql plus Dapper, using the schema in database/postgresql.
 
 ## Run
 
@@ -38,10 +39,63 @@ OpenAPI document during development:
 
 - /openapi/v1.json
 
+Smoke test command:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+```
+
 ## Next Hardening Steps
 
-1. Replace in-memory services with PostgreSQL repositories.
-2. Add JWT auth and claims-based policy enforcement from the RBAC matrix.
-3. Add branch scope middleware and row-level restrictions.
-4. Add FluentValidation for requests and standardized ProblemDetails responses.
-5. Add unit/integration tests for each controller.
+1. ✅ JWT auth and claims-based policy enforcement (COMPLETED)
+   - JWT token generation with role and branch claims
+   - Bearer token validation middleware  
+   - Role-based authorization policies on protected endpoints
+   - See ../api/contracts/AUTH-GUIDE.md for setup and testing
+
+2. ✅ Branch scope middleware and row-level restrictions (COMPLETED)
+   - BranchContext service extracts branch_id from JWT claims
+   - All data queries filtered by user's assigned branch_id
+   - Super admins (role=super_admin) can access all branches
+   - Read operations return 404 if record outside user's branch (don't leak existence)
+   - Write operations return 403 Forbidden if outside user's branch
+   - ExceptionHandlingMiddleware converts violations to proper HTTP responses
+
+3. Add FluentValidation for requests and standardized ProblemDetails responses.
+
+4. Add unit/integration tests for each controller and service.
+
+5. Add migration scripts.
+
+## Authentication & Authorization
+
+All endpoints except `POST /v1/auth/login` require a valid JWT Bearer token.
+
+Test token generation:
+```bash
+curl -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"anypassword"}'
+```
+
+Response includes `accessToken` for use in subsequent requests:
+```
+Authorization: Bearer <accessToken>
+```
+
+For detailed auth configuration and testing, see ../api/contracts/AUTH-GUIDE.md
+
+## Branch-Scoped Data Access
+
+MemberCare enforces multi-tenant isolation at the row level:
+
+- **Super Admin users** (role = "super_admin"): Unrestricted access across all branches
+- **Regular users**: Can only see/modify data in their assigned branch
+
+The branch_id is extracted from JWT claims and automatically enforced on all queries.
+When a user without access attempts to:
+- **Read** a record outside their branch → 404 Not Found
+- **Modify** a record outside their branch → 403 Forbidden
+- **Create** in another branch → 403 Forbidden with message "Cannot create members outside your assigned branch"
+
+See BranchContext.cs and the service layer implementation for details.

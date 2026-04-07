@@ -1,10 +1,12 @@
 using MemberCare.Api.Contracts;
 using MemberCare.Api.Domain;
 using MemberCare.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MemberCare.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("v1/attendance")]
 public sealed class AttendanceController : ControllerBase
@@ -24,6 +26,7 @@ public sealed class AttendanceController : ControllerBase
     }
 
     [HttpPost("sessions")]
+    [Authorize(Policy = "AttendanceManagement")]
     [ProducesResponseType<AttendanceSession>(StatusCodes.Status201Created)]
     public IActionResult CreateSession([FromBody] AttendanceSessionCreateRequest request)
     {
@@ -32,6 +35,7 @@ public sealed class AttendanceController : ControllerBase
     }
 
     [HttpPost("records")]
+    [Authorize(Policy = "AttendanceManagement")]
     [ProducesResponseType<AttendanceRecord>(StatusCodes.Status201Created)]
     public IActionResult CreateRecord([FromBody] AttendanceRecordCreateRequest request)
     {

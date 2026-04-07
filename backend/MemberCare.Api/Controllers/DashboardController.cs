@@ -1,9 +1,11 @@
 using MemberCare.Api.Contracts;
 using MemberCare.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MemberCare.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("v1/dashboard")]
 public sealed class DashboardController : ControllerBase

@@ -1,9 +1,11 @@
 using MemberCare.Api.Contracts;
 using MemberCare.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MemberCare.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("v1/reports")]
 public sealed class ReportsController : ControllerBase
@@ -16,6 +18,7 @@ public sealed class ReportsController : ControllerBase
     }
 
     [HttpGet("summary")]
+    [Authorize(Policy = "Reports")]
     [ProducesResponseType<ReportSummaryResponse>(StatusCodes.Status200OK)]
     public IActionResult Summary([FromQuery] Guid? branchId, [FromQuery] DateOnly? fromDate, [FromQuery] DateOnly? toDate)
     {

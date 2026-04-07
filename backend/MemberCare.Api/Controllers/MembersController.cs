@@ -1,10 +1,12 @@
 using MemberCare.Api.Contracts;
 using MemberCare.Api.Domain;
 using MemberCare.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MemberCare.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("v1/members")]
 public sealed class MembersController : ControllerBase
@@ -38,6 +40,7 @@ public sealed class MembersController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "MemberManagement")]
     [ProducesResponseType<Member>(StatusCodes.Status201Created)]
     public IActionResult Create([FromBody] MemberCreateRequest request)
     {
@@ -46,6 +49,7 @@ public sealed class MembersController : ControllerBase
     }
 
     [HttpPatch("{memberId:guid}")]
+    [Authorize(Policy = "MemberManagement")]
     [ProducesResponseType<Member>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult Update([FromRoute] Guid memberId, [FromBody] MemberUpdateRequest request)
@@ -55,6 +59,7 @@ public sealed class MembersController : ControllerBase
     }
 
     [HttpDelete("{memberId:guid}")]
+    [Authorize(Policy = "MemberManagement")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult Delete([FromRoute] Guid memberId)

@@ -6,20 +6,27 @@ namespace MemberCare.Api.Services;
 public sealed class DashboardService
 {
     private readonly SqlConnectionFactory _connectionFactory;
+    private readonly BranchContext _branchContext;
 
-    public DashboardService(SqlConnectionFactory connectionFactory)
+    public DashboardService(SqlConnectionFactory connectionFactory, BranchContext branchContext)
     {
         _connectionFactory = connectionFactory;
+        _branchContext = branchContext;
     }
 
     public DashboardSummaryResponse GetSummary(Guid? branchId)
     {
+        // Enforce branch scoping: non-super-admin users see only their branch summary
+        var userBranchId = _branchContext.GetUserBranchId();
+        var effectiveBranchId = userBranchId ?? branchId;
+
         using var conn = _connectionFactory.CreateOpenConnection();
         var args = new DynamicParameters();
-        args.Add("BranchId", branchId);
+        args.Add("BranchId", effectiveBranchId);
 
-        const string memberFilter = "(@BranchId IS NULL OR branch_id = @BranchId)";
-        const string attendanceFilter = "(@BranchId IS NULL OR s.branch_id = @BranchId)";
+        // If user has specific branch, enforce it; otherwise allow null for "all branches" (super_admin only)
+        const string memberFilter = "(@BranchId::uuid IS NULL OR branch_id = @BranchId::uuid)";
+        const string attendanceFilter = "(@BranchId::uuid IS NULL OR s.branch_id = @BranchId::uuid)";
 
         var totalMembers = conn.ExecuteScalar<int>($"SELECT COUNT(*) FROM members WHERE {memberFilter}", args);
         var activeMembers = conn.ExecuteScalar<int>($"SELECT COUNT(*) FROM members WHERE {memberFilter} AND member_status = 'Active'", args);

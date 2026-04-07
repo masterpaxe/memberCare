@@ -19,11 +19,14 @@ Implemented modules:
 
 ## Run Locally
 
-1. Open `index.html` in any modern browser.
-2. Use the top-right session card to choose role and branch.
-3. Navigate modules from the left menu.
-4. Enter records using each module form.
-5. Data is persisted to browser localStorage under key `membercare.m1`.
+1. Start the backend API:
+  - `dotnet run --project backend/MemberCare.Api/MemberCare.Api.csproj --urls http://localhost:8080`
+2. Open `index.html` in any modern browser.
+3. Use the top-right session card and click `Apply` to authenticate as the selected role.
+4. Navigate modules from the left menu.
+5. Enter records using each module form.
+
+The frontend now reads/writes live data through the ASP.NET API (PostgreSQL-backed).
 
 ## SRS to MVP Coverage
 
@@ -40,7 +43,7 @@ Phase 1 items from the SRS covered in this prototype:
 
 Not yet implemented in this repository:
 
-- Secure server-side authentication and authorization
+- Full frontend token/session UX (auto-refresh, sign-out, role banners)
 - Multi-user concurrency and central database
 - Department and fellowship full CRUD lifecycle
 - Communication (SMS/email) integrations
@@ -122,5 +125,16 @@ Quick commands:
 Current backend status:
 
 - Versioned `v1` routes matching the API contracts
-- In-memory service layer for immediate endpoint testing
-- Ready for PostgreSQL repository implementation as the next step
+- PostgreSQL-backed service layer using Npgsql plus Dapper
+- **JWT Bearer authentication** with role-based authorization policies
+  - Token generation in `/auth/login` endpoint
+  - Claims include user role and assigned branch_id
+  - Protected endpoints enforce role-based access control
+- **Branch-scoped multi-tenant data isolation**
+  - Users can only access data in their assigned branch
+  - Super admins have unrestricted access across all branches
+  - Row-level enforcement on all queries
+  - 404 for read access outside branch, 403 for write access
+- Ready for input validation, test automation, and production hardening
+
+For auth setup and testing, see `api/contracts/AUTH-GUIDE.md`

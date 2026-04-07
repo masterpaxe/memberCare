@@ -1,10 +1,12 @@
 using MemberCare.Api.Contracts;
 using MemberCare.Api.Domain;
 using MemberCare.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MemberCare.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("v1/visitors")]
 public sealed class VisitorsController : ControllerBase
@@ -24,6 +26,7 @@ public sealed class VisitorsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "VisitorManagement")]
     [ProducesResponseType<Visitor>(StatusCodes.Status201Created)]
     public IActionResult Create([FromBody] VisitorCreateRequest request)
     {
@@ -32,6 +35,7 @@ public sealed class VisitorsController : ControllerBase
     }
 
     [HttpPost("{visitorId:guid}/convert")]
+    [Authorize(Policy = "VisitorManagement")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult ConvertToMember([FromRoute] Guid visitorId)

@@ -7,17 +7,27 @@ namespace MemberCare.Api.Services;
 public sealed class VisitorService
 {
     private readonly SqlConnectionFactory _connectionFactory;
+    private readonly BranchContext _branchContext;
 
-    public VisitorService(SqlConnectionFactory connectionFactory)
+    public VisitorService(SqlConnectionFactory connectionFactory, BranchContext branchContext)
     {
         _connectionFactory = connectionFactory;
+        _branchContext = branchContext;
     }
 
     public IReadOnlyCollection<Visitor> List(Guid? branchId, string? followUpStatus)
     {
         var where = new List<string>();
         var args = new DynamicParameters();
-        if (branchId.HasValue)
+
+        // Enforce branch scoping
+        var userBranchId = _branchContext.GetUserBranchId();
+        if (userBranchId.HasValue)
+        {
+            where.Add("branch_id = @UserBranchId");
+            args.Add("UserBranchId", userBranchId.Value);
+        }
+        else if (branchId.HasValue)
         {
             where.Add("branch_id = @BranchId");
             args.Add("BranchId", branchId.Value);
@@ -49,6 +59,14 @@ public sealed class VisitorService
 
     public Visitor Create(VisitorCreateRequest request)
     {
+        var userBranchId = _branchContext.GetUserBranchId();
+
+        // Enforce branch scoping: non-super-admin can only create in their assigned branch
+        if (userBranchId.HasValue && request.BranchId != userBranchId.Value)
+        {
+            throw new UnauthorizedAccessException("Cannot create visitors outside your assigned branch.");
+        }
+
         using var conn = _connectionFactory.CreateOpenConnection();
         return conn.QuerySingle<Visitor>(@"
             INSERT INTO visitors
@@ -78,7 +96,20 @@ public sealed class VisitorService
 
     public Member? ConvertToMember(Guid visitorId)
     {
+        var userBranchId = _branchContext.GetUserBranchId();
+
         using var conn = _connectionFactory.CreateOpenConnection();
+
+        // If not super_admin, verify visitor belongs to user's branch before allowing conversion
+        if (userBranchId.HasValue)
+        {
+            var visitorBranch = conn.ExecuteScalar<Guid?>("SELECT branch_id FROM visitors WHERE visitor_id = @VisitorId", new { VisitorId = visitorId });
+            if (visitorBranch != userBranchId.Value)
+            {
+                return null; // Forbidden: visitor not in user's branch
+            }
+        }
+
         using var tx = conn.BeginTransaction();
 
         var source = conn.QuerySingleOrDefault<(Guid BranchId, string FirstName, string? LastName, string? Phone)>(@"
