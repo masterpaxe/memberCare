@@ -1,0 +1,115 @@
+﻿@inherits LayoutComponentBase
+@inject AppState AppState
+@inject ApiClient Api
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="page-bg"></div>
+
+<main class="app">
+    <section class="top-rail">
+        <div>
+            <p class="eyebrow">Church Management and Member Care</p>
+            <h1>MemberCare</h1>
+        </div>
+        <div class="session-card">
+            <label>Role</label>
+            <select @bind="AppState.Role">
+                <option value="super_admin">Super Administrator</option>
+                <option value="church_admin">Church Administrator</option>
+                <option value="pastor">Pastor / Minister</option>
+                <option value="follow_up">Follow-Up Officer</option>
+                <option value="attendance">Attendance Officer</option>
+            </select>
+            <label>Branch</label>
+            <select @bind="AppState.Branch">
+                <option value="All">All Branches</option>
+                <option value="Central">Central</option>
+                <option value="North">North</option>
+                <option value="South">South</option>
+            </select>
+            <button class="btn btn-solid" @onclick="ApplyAsync" disabled="@_loading">
+                @(_loading ? "Connecting..." : "Apply")
+            </button>
+            @if (!string.IsNullOrEmpty(AppState.StatusMessage))
+            {
+                <small class="status-msg @(AppState.IsConnected ? "ok" : "err")">@AppState.StatusMessage</small>
+            }
+        </div>
+    </section>
+
+    <section class="layout">
+        <aside class="sidebar">
+            <NavMenu />
+        </aside>
+        <section class="content">
+            @Body
+        </section>
+    </section>
+</main>
+
+@code {
+    private bool _loading;
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= StateHasChanged;
+    }
+
+    private async Task ApplyAsync()
+    {
+        _loading = true;
+        AppState.StatusMessage = null;
+        try
+        {
+            var username = AppState.Role switch
+            {
+                "super_admin" => "admin",
+                "pastor" => "pastor",
+                "attendance" => "attendance",
+                "follow_up" => "visitorcare",
+                _ => "churchadmin"
+            };
+            var token = await Api.LoginAsync(username);
+            if (token is not null)
+            {
+                AppState.Token = token.AccessToken;
+                AppState.IsConnected = true;
+                AppState.StatusMessage = "Connected";
+                var payload = ParseJwt(token.AccessToken);
+                if (payload.TryGetValue("branch_id", out var bid))
+                    AppState.BranchId = bid?.ToString() ?? "";
+                AppState.Notify();
+            }
+        }
+        catch (Exception ex)
+        {
+            AppState.IsConnected = false;
+            AppState.StatusMessage = $"Error: {ex.Message}";
+            AppState.Notify();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static Dictionary<string, object?> ParseJwt(string token)
+    {
+        try
+        {
+            var parts = token.Split('.');
+            if (parts.Length < 2) return [];
+            var payload = parts[1].Replace('-', '+').Replace('_', '/');
+            var padded = payload.PadRight((payload.Length + 3) & ~3, '=');
+            var json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object?>>(json) ?? [];
+        }
+        catch { return []; }
+    }
+}

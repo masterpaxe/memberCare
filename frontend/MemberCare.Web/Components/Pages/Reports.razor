@@ -1,0 +1,101 @@
+@page "/reports"
+@inject AppState AppState
+@inject ApiClient Api
+@implements IDisposable
+
+<PageTitle>Reports – MemberCare</PageTitle>
+
+<article>
+    <div class="panel">
+        <h2>Reports and Analytics</h2>
+
+        @if (_loading)
+        {
+            <p class="loading-msg">Loading report data…</p>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <p class="err-msg">@_error</p>
+        }
+        else if (_dashboard is null)
+        {
+            <p class="loading-msg">Select a role and click <strong>Apply</strong> to load reports.</p>
+        }
+        else
+        {
+            <div class="kpi-grid">
+                <div class="kpi">
+                    <div class="label">Total Members</div>
+                    <div class="value">@_dashboard.TotalMembers</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">Active Members</div>
+                    <div class="value">@_dashboard.ActiveMembers</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">Visitors in Queue</div>
+                    <div class="value">@_dashboard.Visitors</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">New Converts</div>
+                    <div class="value">@_dashboard.NewConverts</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">Attendance Records</div>
+                    <div class="value">@_dashboard.AttendanceRecords</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">Pending Follow-Up</div>
+                    <div class="value">@_dashboard.PendingFollowUp</div>
+                </div>
+                <div class="kpi">
+                    <div class="label">Absentees</div>
+                    <div class="value">@_dashboard.Absentees</div>
+                </div>
+            </div>
+        }
+
+        <div class="actions">
+            <button class="btn btn-ghost" @onclick="ExportAsync" disabled="@(_dashboard is null)">
+                Export Snapshot (JSON)
+            </button>
+        </div>
+    </div>
+</article>
+
+@code {
+    private DashboardSummaryDto? _dashboard;
+    private bool _loading;
+    private string? _error;
+
+    protected override void OnInitialized() =>
+        AppState.OnChange += OnStateChanged;
+
+    public void Dispose() =>
+        AppState.OnChange -= OnStateChanged;
+
+    private void OnStateChanged() => InvokeAsync(LoadAsync);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AppState.IsConnected) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+        try { _dashboard = await Api.GetDashboardAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; StateHasChanged(); }
+    }
+
+    private void ExportAsync()
+    {
+        if (_dashboard is null) return;
+        var json = System.Text.Json.JsonSerializer.Serialize(_dashboard,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        Console.WriteLine(json); // In a full app, trigger file download via JS interop
+    }
+}

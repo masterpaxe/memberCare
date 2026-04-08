@@ -2,4 +2,7 @@
   <Folder Name="/backend/">
     <Project Path="backend/MemberCare.Api/MemberCare.Api.csproj" />
   </Folder>
+  <Folder Name="/frontend/">
+    <Project Path="frontend/MemberCare.Web/MemberCare.Web.csproj" />
+  </Folder>
 </Solution>

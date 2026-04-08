@@ -1,0 +1,113 @@
+@page "/converts"
+@inject AppState AppState
+@inject ApiClient Api
+
+<PageTitle>New Converts – MemberCare</PageTitle>
+
+<article>
+    <div class="panel">
+        <h2>New Convert Management</h2>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <p class="err-msg">@_error</p>
+        }
+        <EditForm Model="_form" OnValidSubmit="SubmitAsync" FormName="convertForm">
+            <div class="grid-form">
+                <InputText @bind-Value="_form.FullName" placeholder="Convert name" required />
+                <InputDate @bind-Value="_form.DecisionDate" />
+                <InputText @bind-Value="_form.EventName" placeholder="Decision event" />
+                <InputText @bind-Value="_form.Counselor" placeholder="Assigned counselor" />
+                <button class="btn btn-solid" type="submit" disabled="@_submitting">
+                    @(_submitting ? "Saving…" : "Add Convert")
+                </button>
+            </div>
+        </EditForm>
+    </div>
+
+    <div class="panel">
+        <h3>Convert Tracking</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th><th>Name</th><th>Decision Date</th><th>Baptism</th><th>Counselor</th><th>Branch</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_loading)
+                    {
+                        <tr><td colspan="6" class="loading-msg">Loading…</td></tr>
+                    }
+                    else if (_converts.Count == 0)
+                    {
+                        <tr><td colspan="6">No new convert records.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var c in _converts)
+                        {
+                            <tr>
+                                <td>@c.NewConvertId.ToString()[..8]…</td>
+                                <td>@c.FullName</td>
+                                <td>@c.DecisionDate[..10]</td>
+                                <td><span class="tag">@c.BaptismStatus</span></td>
+                                <td>@(c.AssignedCounselor ?? "–")</td>
+                                <td>@c.BranchId.ToString()[..8]…</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</article>
+
+@code {
+    private List<NewConvertDto> _converts = [];
+    private bool _loading;
+    private bool _submitting;
+    private string? _error;
+    private ConvertForm _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AppState.IsConnected) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try { _converts = await Api.GetConvertsAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (!AppState.IsConnected) { _error = "Click Apply to connect first."; return; }
+        _submitting = true;
+        _error = null;
+        try
+        {
+            var ok = await Api.CreateConvertAsync(new
+            {
+                branchId = AppState.BranchId,
+                fullName = _form.FullName,
+                decisionDate = _form.DecisionDate.ToString("yyyy-MM-dd"),
+                assignedCounselor = _form.Counselor
+            });
+            if (ok) { _form = new(); await LoadAsync(); }
+            else _error = "Create failed.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private class ConvertForm
+    {
+        public string FullName { get; set; } = "";
+        public DateOnly DecisionDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public string EventName { get; set; } = "";
+        public string Counselor { get; set; } = "";
+    }
+}

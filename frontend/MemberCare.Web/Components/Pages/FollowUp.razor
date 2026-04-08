@@ -1,0 +1,117 @@
+@page "/followup"
+@inject AppState AppState
+@inject ApiClient Api
+
+<PageTitle>Follow-Up – MemberCare</PageTitle>
+
+<article>
+    <div class="panel">
+        <h2>Follow-Up and Pastoral Care</h2>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <p class="err-msg">@_error</p>
+        }
+        <EditForm Model="_form" OnValidSubmit="SubmitAsync" FormName="followupForm">
+            <div class="grid-form">
+                <InputSelect @bind-Value="_form.ActionType">
+                    <option value="Call">Call</option>
+                    <option value="SMS">SMS</option>
+                    <option value="Visit">Visit</option>
+                    <option value="Counseling">Counseling</option>
+                    <option value="Prayer">Prayer</option>
+                </InputSelect>
+                <InputSelect @bind-Value="_form.Status">
+                    <option value="Open">Open</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Closed">Closed</option>
+                </InputSelect>
+                <button class="btn btn-solid" type="submit" disabled="@_submitting">
+                    @(_submitting ? "Saving…" : "Add Case")
+                </button>
+            </div>
+        </EditForm>
+    </div>
+
+    <div class="panel">
+        <h3>Follow-Up Cases</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th><th>Action Type</th><th>Date</th><th>Status</th><th>Branch</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_loading)
+                    {
+                        <tr><td colspan="5" class="loading-msg">Loading…</td></tr>
+                    }
+                    else if (_followups.Count == 0)
+                    {
+                        <tr><td colspan="5">No follow-up cases yet.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var f in _followups)
+                        {
+                            <tr>
+                                <td>@f.FollowUpRecordId.ToString()[..8]…</td>
+                                <td>@f.ActionType</td>
+                                <td>@f.ActionDate[..10]</td>
+                                <td><span class="tag">@f.Status</span></td>
+                                <td>@f.BranchId.ToString()[..8]…</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</article>
+
+@code {
+    private List<FollowUpDto> _followups = [];
+    private bool _loading;
+    private bool _submitting;
+    private string? _error;
+    private FollowUpForm _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AppState.IsConnected) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try { _followups = await Api.GetFollowUpsAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (!AppState.IsConnected) { _error = "Click Apply to connect first."; return; }
+        _submitting = true;
+        _error = null;
+        try
+        {
+            var ok = await Api.CreateFollowUpAsync(new
+            {
+                branchId   = AppState.BranchId,
+                actionType = _form.ActionType,
+                status     = _form.Status
+            });
+            if (ok) { _form = new(); await LoadAsync(); }
+            else _error = "Create failed – check API permissions.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private class FollowUpForm
+    {
+        public string ActionType { get; set; } = "Call";
+        public string Status     { get; set; } = "Open";
+    }
+}

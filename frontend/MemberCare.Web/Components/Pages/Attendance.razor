@@ -1,0 +1,188 @@
+@page "/attendance"
+@inject AppState AppState
+@inject ApiClient Api
+
+<PageTitle>Attendance – MemberCare</PageTitle>
+
+<article>
+    <div class="panel split">
+        <div>
+            <h2>Create Attendance Session</h2>
+            @if (!string.IsNullOrEmpty(_sessionError))
+            {
+                <p class="err-msg">@_sessionError</p>
+            }
+            <EditForm Model="_sessionForm" OnValidSubmit="SubmitSessionAsync" FormName="sessionForm">
+                <div class="grid-form one-col">
+                    <InputText @bind-Value="_sessionForm.Title" placeholder="Session title" required />
+                    <InputSelect @bind-Value="_sessionForm.Type">
+                        <option value="Sunday Service">Sunday Service</option>
+                        <option value="Midweek Service">Midweek Service</option>
+                        <option value="Fellowship Meeting">Fellowship Meeting</option>
+                        <option value="Department Meeting">Department Meeting</option>
+                        <option value="Bible Study">Bible Study</option>
+                        <option value="Workers Meeting">Workers Meeting</option>
+                    </InputSelect>
+                    <InputDate @bind-Value="_sessionForm.Date" />
+                    <button class="btn btn-solid" type="submit" disabled="@_submittingSession">
+                        @(_submittingSession ? "Creating…" : "Create Session")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+        <div>
+            <h2>Record Attendance</h2>
+            @if (!string.IsNullOrEmpty(_recordError))
+            {
+                <p class="err-msg">@_recordError</p>
+            }
+            <EditForm Model="_recordForm" OnValidSubmit="SubmitRecordAsync" FormName="attendanceForm">
+                <div class="grid-form one-col">
+                    <InputSelect @bind-Value="_recordForm.SessionId">
+                        @if (_sessions.Count == 0)
+                        {
+                            <option value="">No sessions yet</option>
+                        }
+                        @foreach (var s in _sessions)
+                        {
+                            <option value="@s.AttendanceSessionId">@s.SessionTitle (@s.SessionDate[..10])</option>
+                        }
+                    </InputSelect>
+                    <InputText @bind-Value="_recordForm.PersonName" placeholder="Member or visitor name" required />
+                    <InputSelect @bind-Value="_recordForm.PersonType">
+                        <option value="Member">Member</option>
+                        <option value="Visitor">Visitor</option>
+                    </InputSelect>
+                    <InputSelect @bind-Value="_recordForm.Present">
+                        <option value="true">Present</option>
+                        <option value="false">Absent</option>
+                    </InputSelect>
+                    <button class="btn btn-solid" type="submit" disabled="@_submittingRecord">
+                        @(_submittingRecord ? "Saving…" : "Save Record")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h3>Sessions</h3>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title</th><th>Type</th><th>Date</th><th>Branch</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_loading)
+                    {
+                        <tr><td colspan="4" class="loading-msg">Loading…</td></tr>
+                    }
+                    else if (_sessions.Count == 0)
+                    {
+                        <tr><td colspan="4">No sessions found.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var s in _sessions)
+                        {
+                            <tr>
+                                <td>@s.SessionTitle</td>
+                                <td>@s.SessionType</td>
+                                <td>@s.SessionDate[..10]</td>
+                                <td>@s.BranchId.ToString()[..8]…</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</article>
+
+@code {
+    private List<AttendanceSessionDto> _sessions = [];
+    private bool _loading;
+    private bool _submittingSession;
+    private bool _submittingRecord;
+    private string? _sessionError;
+    private string? _recordError;
+    private SessionForm _sessionForm = new();
+    private RecordForm _recordForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AppState.IsConnected) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try { _sessions = await Api.GetSessionsAsync(); }
+        catch (Exception ex) { _sessionError = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SubmitSessionAsync()
+    {
+        if (!AppState.IsConnected) { _sessionError = "Click Apply to connect first."; return; }
+        _submittingSession = true;
+        _sessionError = null;
+        try
+        {
+            var ok = await Api.CreateSessionAsync(new
+            {
+                branchId = AppState.BranchId,
+                sessionTitle = _sessionForm.Title,
+                sessionType  = _sessionForm.Type,
+                sessionDate  = _sessionForm.Date.ToString("yyyy-MM-dd")
+            });
+            if (ok) { _sessionForm = new(); await LoadAsync(); }
+            else _sessionError = "Create failed.";
+        }
+        catch (Exception ex) { _sessionError = ex.Message; }
+        finally { _submittingSession = false; }
+    }
+
+    private async Task SubmitRecordAsync()
+    {
+        if (!AppState.IsConnected) { _recordError = "Click Apply to connect first."; return; }
+        if (_sessions.Count == 0) { _recordError = "No sessions available."; return; }
+        _submittingRecord = true;
+        _recordError = null;
+        try
+        {
+            var sessionId = string.IsNullOrEmpty(_recordForm.SessionId)
+                ? _sessions[0].AttendanceSessionId
+                : Guid.Parse(_recordForm.SessionId);
+
+            var ok = await Api.CreateAttendanceRecordAsync(new
+            {
+                attendanceSessionId = sessionId,
+                personName  = _recordForm.PersonName,
+                personType  = _recordForm.PersonType,
+                isPresent   = _recordForm.Present == "true"
+            });
+            if (ok) { _recordForm = new(); }
+            else _recordError = "Save failed.";
+        }
+        catch (Exception ex) { _recordError = ex.Message; }
+        finally { _submittingRecord = false; }
+    }
+
+    private class SessionForm
+    {
+        public string Title { get; set; } = "";
+        public string Type  { get; set; } = "Sunday Service";
+        public DateOnly Date { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+    }
+
+    private class RecordForm
+    {
+        public string SessionId  { get; set; } = "";
+        public string PersonName { get; set; } = "";
+        public string PersonType { get; set; } = "Member";
+        public string Present    { get; set; } = "true";
+    }
+}

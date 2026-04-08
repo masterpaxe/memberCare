@@ -1,0 +1,132 @@
+﻿@page "/"
+@inject AppState AppState
+@inject ApiClient Api
+@implements IDisposable
+
+<PageTitle>Dashboard – MemberCare</PageTitle>
+
+<article>
+    <div class="panel">
+        <h2>Operational Snapshot</h2>
+        <p>Live summary by branch and role access.</p>
+
+        @if (_loading)
+        {
+            <p class="loading-msg">Loading dashboard data…</p>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <p class="err-msg">@_error</p>
+        }
+        else if (_dashboard is null)
+        {
+            <p class="loading-msg">Select a role and click <strong>Apply</strong> to connect.</p>
+        }
+        else
+        {
+            <div class="kpi-grid">
+                @foreach (var (label, value) in KpiCards())
+                {
+                    <div class="kpi">
+                        <div class="label">@label</div>
+                        <div class="value">@value</div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="panel split">
+        <div>
+            <h3>Attendance Trend (last 4 sessions)</h3>
+            <div class="trend-chart">
+                @if (_sessions.Count == 0)
+                {
+                    <p class="loading-msg">No sessions yet.</p>
+                }
+                else
+                {
+                    @foreach (var s in _sessions.TakeLast(4))
+                    {
+                        var label = s.SessionTitle.Length > 10 ? s.SessionTitle[..10] + "." : s.SessionTitle;
+                        <div class="bar-row">
+                            <span>@label</span>
+                            <div class="bar"><span style="width:0%"></span></div>
+                            <strong>–</strong>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+        <div>
+            <h3>Alerts</h3>
+            <ul class="alert-list">
+                @foreach (var alert in Alerts())
+                {
+                    <li>@alert</li>
+                }
+            </ul>
+        </div>
+    </div>
+</article>
+
+@code {
+    private DashboardSummaryDto? _dashboard;
+    private List<AttendanceSessionDto> _sessions = [];
+    private bool _loading;
+    private string? _error;
+
+    protected override void OnInitialized() =>
+        AppState.OnChange += OnStateChanged;
+
+    public void Dispose() =>
+        AppState.OnChange -= OnStateChanged;
+
+    private void OnStateChanged() => InvokeAsync(LoadDataAsync);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AppState.IsConnected)
+            await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            var dashTask = Api.GetDashboardAsync();
+            var sessTask = Api.GetSessionsAsync();
+            await Task.WhenAll(dashTask, sessTask);
+            _dashboard = await dashTask;
+            _sessions = await sessTask;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; StateHasChanged(); }
+    }
+
+    private IEnumerable<(string, int)> KpiCards()
+    {
+        if (_dashboard is null) yield break;
+        yield return ("Total Members",     _dashboard.TotalMembers);
+        yield return ("Active Members",    _dashboard.ActiveMembers);
+        yield return ("Visitors",          _dashboard.Visitors);
+        yield return ("New Converts",      _dashboard.NewConverts);
+        yield return ("Attendance Records",_dashboard.AttendanceRecords);
+        yield return ("Pending Follow-Up", _dashboard.PendingFollowUp);
+        yield return ("Absentees",         _dashboard.Absentees);
+        yield return ("Sessions",          _sessions.Count);
+    }
+
+    private IEnumerable<string> Alerts()
+    {
+        if (_dashboard is null) { yield return "Connect above to see alerts."; yield break; }
+        if (_dashboard.PendingFollowUp > 0) yield return $"{_dashboard.PendingFollowUp} follow-up cases need action.";
+        if (_dashboard.Visitors > 0)        yield return $"{_dashboard.Visitors} visitors in assimilation queue.";
+        if (_dashboard.Absentees > 0)       yield return $"{_dashboard.Absentees} absentee records captured recently.";
+        yield return "Connected to live API data.";
+    }
+}
+

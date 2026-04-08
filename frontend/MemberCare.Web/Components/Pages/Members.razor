@@ -1,0 +1,125 @@
+@page "/members"
+@inject AppState AppState
+@inject ApiClient Api
+
+<PageTitle>Members – MemberCare</PageTitle>
+
+<article>
+    <div class="panel">
+        <h2>Member Management</h2>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <p class="err-msg">@_error</p>
+        }
+        <EditForm Model="_form" OnValidSubmit="SubmitAsync" FormName="memberForm">
+            <div class="grid-form">
+                <InputText @bind-Value="_form.FullName" placeholder="Full name" required />
+                <InputText @bind-Value="_form.Phone" placeholder="Phone" required />
+                <InputText @bind-Value="_form.Email" placeholder="Email" type="email" />
+                <InputSelect @bind-Value="_form.Status">
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="Transferred">Transferred</option>
+                </InputSelect>
+                <button class="btn btn-solid" type="submit" disabled="@_submitting">
+                    @(_submitting ? "Saving…" : "Add Member")
+                </button>
+            </div>
+        </EditForm>
+    </div>
+
+    <div class="panel">
+        <h3>Members</h3>
+        <input class="search" @bind="_search" @bind:event="oninput" placeholder="Search members…" />
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th><th>Name</th><th>Phone</th><th>Status</th><th>Branch</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_loading)
+                    {
+                        <tr><td colspan="5" class="loading-msg">Loading…</td></tr>
+                    }
+                    else if (!Filtered.Any())
+                    {
+                        <tr><td colspan="5">No members found.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var m in Filtered)
+                        {
+                            <tr>
+                                <td>@m.MemberId.ToString()[..8]…</td>
+                                <td>@m.FirstName @m.LastName</td>
+                                <td>@m.Phone</td>
+                                <td><span class="tag">@m.MemberStatus</span></td>
+                                <td>@m.BranchId.ToString()[..8]…</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</article>
+
+@code {
+    private List<MemberDto> _members = [];
+    private bool _loading;
+    private bool _submitting;
+    private string? _error;
+    private string _search = "";
+    private MemberForm _form = new();
+
+    private IEnumerable<MemberDto> Filtered =>
+        string.IsNullOrWhiteSpace(_search) ? _members
+        : _members.Where(m => $"{m.FirstName} {m.LastName} {m.Phone}"
+            .Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AppState.IsConnected) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try { _members = await Api.GetMembersAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (!AppState.IsConnected) { _error = "Click Apply to connect first."; return; }
+        _submitting = true;
+        _error = null;
+        try
+        {
+            var parts = _form.FullName.Trim().Split(' ', 2);
+            var ok = await Api.CreateMemberAsync(new
+            {
+                branchId = AppState.BranchId,
+                firstName = parts[0],
+                lastName = parts.Length > 1 ? parts[1] : "",
+                phone = _form.Phone,
+                email = _form.Email
+            });
+            if (ok) { _form = new(); await LoadAsync(); }
+            else _error = "Create failed – check API permissions.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private class MemberForm
+    {
+        public string FullName { get; set; } = "";
+        public string Phone { get; set; } = "";
+        public string? Email { get; set; }
+        public string Status { get; set; } = "Active";
+    }
+}
